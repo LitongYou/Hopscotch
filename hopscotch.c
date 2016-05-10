@@ -59,7 +59,7 @@ typedef struct {
 
 typedef struct {
 	void *data;
-	key_t hkey; // hashed key
+	key_t hkey; // hashed key, using 0 as "magic number", this could cause an error
 	bitmap_t hop_info;
 } hs_bucket_t;
 
@@ -118,18 +118,12 @@ hs_table_t *hs_new(uint n_segments,
 	return new_table;
 }
 
-// - Starting at i = h(key), use linear probing to find an empty entry at index j.
-// - If the empty entry's index j is within H - 1 of i, place x there and return.
-// - Otherwise, j is too far from i. To create an empty entry closer to i, find an
-//   item y whose hash value lies between i and j, but within H-1 of j, and whose
-//   entry lies below j. Displacing y to j creates a new empty slot closer to i.
-//   Repeat. If no such item exists, or if the bucket already i contains H items,
-//   resize and rehash the table.
 void hs_put(hs_table_t *table, void *key, void *data)
 {
 	key_t hkey = calculate_hash(key);
 	hs_segment_t *seg = &(table->segment_array[get_segment_idx(table, hkey)]);
 	key_t bucket_idx = hkey % table->n_buckets_in_segment;
+	uint hop_range = table->hop_range;
 
 	hs_bucket_t *start_bucket = seg->bucket_array[bucket_idx];
 	LOCK_ACQUIRE(seg->lock);
@@ -144,6 +138,7 @@ void hs_put(hs_table_t *table, void *key, void *data)
 	hs_bucket_t *free_bucket = start_bucket;
 	uint dist_travelled;
 
+	// find an empty bucket within ADD_RANGE
 	for (dist_travelled = 0; dist_travelled < ADD_RANGE; dist_travelled++) {
 		if (free_bucket->hkey == NULL) {
 			break;
@@ -151,23 +146,21 @@ void hs_put(hs_table_t *table, void *key, void *data)
 		free_bucket++;
 	}
 
-	if (dist_travelled < ADD_RANGE) {
+	if (dist_travelled < ADD_RANGE) /* empty bucket found */ {
 		do {
-			if (dist_travelled < table->hop_range) {
-				// travelling from msb to lsb
-				start_bucket->hop_info |= (1 << (table->hop_range - dist_travelled));
+			if (dist_travelled < hop_range) {
+				start_bucket->hop_info |= (1 << dist_travelled);
 				free_bucket->hkey = hkey;
 				free_bucket->data = data;
 				LOCK_RELEASE(seg->lock);
 				return;
 			}
-			find_closer_free_bucket(table, free_bucket, dist_travelled);
-			// can we guarantee that find_closer_free_bucket() will always find a closer 
-			// bucket? If not, then this could be a infinite loop.
+			find_closer_free_bucket(table, &free_bucket, &dist_travelled);
+			// if no bucket found within hop_range, free_bucket is set to NULL and
+			// table will be resized.
 		} while (free_bucket != NULL);
 	}
 
-	// did not find bucket within ADD_RANGE.
 	LOCK_RELEASE(seg->lock);
 	resize();
 	hs_put(table, key, data);
@@ -179,6 +172,7 @@ void *hs_get(hs_table_t *table, void *key);
 	key_t hkey = calculate_hash(key);
 	hs_segment_t *seg = &(table->segment_array[get_segment_idx(table, hkey)]);
 	key_t bucket_idx = hkey % table->n_buckets_in_segment;
+	uint max_tries = table->max_tries;
 
 	hs_bucket_t *start_bucket = seg->bucket_array[bucket_idx];
 	hs_bucket_t *check_bucket;
@@ -195,9 +189,9 @@ void *hs_get(hs_table_t *table, void *key);
 			return check_bucket->data;
 		}
 		try_counter++;
-	} while (try_counter < table->max_tries && timestamp != seg->timestamp);
+	} while (try_counter < max_tries && timestamp != seg->timestamp);
 
-	// Consider adding slow path: Search all [base, base+hop_range] for hkey.
+	// Consider adding "slow path": Search all [base, base+hop_range] for hkey.
 
 	returne NULL;
 }
@@ -218,7 +212,7 @@ void *hs_remove(hs_table_t *table,void *key);
 		data = check_bucket->data;
 		check_bucket->hkey = NULL;
 		check_bucket->data = NULL;
-		start_bucket->hop_info &= ~(1 << (check_bucket - start_bucket))
+		start_bucket->hop_info &= ~(1 << (check_bucket - start_bucket));
 		return data;
 	}
 	LOCK_RELEASE(seg->lock);
@@ -244,22 +238,49 @@ void hs_dispose_table(hs_table_t *table);
 // PRIVATE FUNCTION DEFENITIONS
 // --------------------------------------------
 
-static void find_closer_free_bucket (hs_table_t *table, hs_bucket_t *free_bucket, uint *dist_travelled)
+static void find_closer_free_bucket (hs_table_t *table, hs_bucket_t **free_bucket, uint *dist_travelled)
 {
-	hs_bucket_t *bucket check_bucket = free_bucket - (table->hop_range-1);
-	uint bucket_idx;
 	// examine all hop_range-1 preceeding buckets
-	for (bucket_idx = (table->hop_range - 1); bucket_idx > 0; bucket_idx--) {
+	hs_bucket_t *hs_bucket_t check_bucket = *free_bucket - (table->hop_range-1);
+	uint bucket_idx = (table->hop_range - 1);
+	while (bucket_idx > 0) {
 		int move_distance = -1;
-//		key_t mask = ~((key_t)-1 >> 1);
+		bitmap_t hop_info = check_bucket->hop_info;
 		// look for a occupied bucket in bitmap of check_bucket, whose key can be moved to free_bucket
+		// don't move the first bucket.
 		uint i;
-		for (i = 0; i < bucket_idx; i++
-	}
+		key_t mask = (1 << 1);
+		for (i = 1; i < bucket_idx; i++, mask <<= 1) {
+			if (mask & hop_info) {
+				move_distance = i;
+			}
+		}
 
-	// within H-1 range(don't want to move a bucket out of the range of its base), find a bucket Y which is not a base bucket. Start at this_bucket_location-(H-1) for efficiency.
-	// swap free_bucket with Y
-	// update bitmap of Y's base bucket
+		if (move_distance != -1) /* closer bucket found */ {
+			hs_bucket_t *new_free_bucket = check_bucket + move_distance;
+
+			check_bucket->hop_info |= (1 << bucket_idx);
+			check_bucket->hop_info &= ~(1 << move_distance);
+			*free_bucket->data = new_free_bucket->data;
+			*free_bucket->hkey = new_free_bucket->hkey;
+			
+			seg->timestamp++;
+
+			// this will be set in hs_put if this bucket be used.
+			new_free_bucket->hkey = 0;
+			new_free_bucket->data = NULL;
+
+			*free_bucket = new_free_bucket;
+			*dist_travelled = bucket_idx;
+
+			return;
+		}
+
+		check_bucket++;
+		bucket_idx--;
+	}
+	*dist_travelled = 0;
+	*free_bucket = NULL;
 }
 
 static void hs_resize(hs_table_t *table)
@@ -281,18 +302,19 @@ static key_t get_segment_idx(hs_table_t *table, key_t hkey) {
 	return hkey & mask;
 }
 
+// Assuming little-endianess on architecture, closest bucket (on right) is lsb.
 static inline hs_bucket_t *check_neighborhood(hs_table_t *table, hs_bucket_t *start_bucket, key_t hkey)
 {
-	hop_info = start_bucket->hop_info;
+	bitmap_t hop_info = start_bucket->hop_info;
 	hs_bucket_t *this_bucket = start_bucket;
 
 	while (hop_info > 0) {
-		if (GET_BMAP_MSB(hop_info) == 0) /* no leading 0-bits from msb */ { 
+		if (hop_info & 1) { 
 			if (hkey == this_bucket->hkey) {
 				return this_bucket;
 			}
 		}
-		hop_info = hop_info << 1;
+		hop_info = hop_info >> 1;
 		this_bucket++;
 	}
 

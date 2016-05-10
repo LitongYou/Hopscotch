@@ -29,13 +29,6 @@
   POSSIBILITY OF SUCH DAMAGE.
 */
 
-// An implementation of the Hopscotch Hashing as described by Herlihy et al., 2008.
-
-// Further room for improvement
-// - Resize()
-// - Bitmap vs linked list?
-// - Return status in functions (error handling)
-
 #ifndef __HOPSCOTCH_H_
 #define __HOPSCOTCH_H_
 
@@ -46,7 +39,7 @@ typedef hs_table_t;
 typedef key_t uint32_t;
 typedef bitmap_t uint32_t;
 
-#define GET_BMAP_MSB(x) __builtin_clz(x)
+//#define GET_BMAP_MSB(x) __builtin_clz(x)
 
 typedef key_t (*hash_function_t)(void *val);
 

@@ -1,7 +1,7 @@
 CC = gcc
 CFLAGS = -Wall -O3 -g
-LIB = -lpthread
-DEPS = ../hopscotch.c
+LIB =
+DEPS = ../hopscotch.c ../hash.h
 EXE = test
 
 $(EXE): test.c

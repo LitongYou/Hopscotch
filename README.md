@@ -17,7 +17,7 @@ To add an item x where h(x) = i
 
 ### Implementation:  
 This particular implementation is based on a bitmap (as opposed to linked list).  
-The hash map is split into segments.  
+The hash map is split into segments, segments are wrapped.  
 For update functions (i.e. add/remove) locking happens on segment granularity. Thus the number of segments determines the concurrency level.  
 Get operations uses timestamps (which are updated when displacement happens) and through this, the system is linearizable.
 
@@ -28,7 +28,6 @@ Get operations uses timestamps (which are updated when displacement happens) and
 
 
 ### Todo:  
-- Fix wrapping
 - Testing
 - Benchmark
 - Implement resize()

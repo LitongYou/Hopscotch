@@ -29,6 +29,15 @@
   POSSIBILITY OF SUCH DAMAGE.
 */
 
+// This implementation:
+// Bitmaps for fast retrieval.
+// Assuming little-endianess on architecture, closest bucket (on right side) in bitmap is lsb.
+// Locking at segment granularity for any update function.
+// Timestamps updated by find_closer_neighbor() and used by hs_get()
+// Wrapped segments
+// Assumes power of two <n_segments> and <n_buckets_in_segment>.
+// See README & [Herlihy et al., 2008] for more details.
+
 #include "hopscotch.h"
 #include "hash.h"
 #include "sync.h"
@@ -52,6 +61,7 @@ typedef struct {
 
 typedef struct {
 	hs_bucket_t *bucket_array;
+	hs_bucket_t *last_bucket;
 	lock_t lock;
 	uint count;
 	volatile uint timestamp;
@@ -70,8 +80,8 @@ typedef struct {
 
 static key_t get_segment_idx(hs_table_t *table, key_t hkey);
 static void hs_resize(hs_table_t *table);
-static void find_closer_free_bucket (hs_table_t *table, hs_bucket_t **free_bucket, uint *dist_travelled);
-static inline hs_bucket_t *check_neighborhood(hs_table_t *table, hs_bucket_t *start_bucket, key_t hkey);
+static void find_closer_free_bucket (hs_table_t *table, hs_segment_t *seg, hs_bucket_t **free_bucket, uint *dist_travelled);
+static inline hs_bucket_t *check_neighborhood(hs_table_t *table, hs_segment_t *seg, hs_bucket_t *start_bucket, key_t hkey);
 
 // Precondition: n must be power of two.
 #define MOD(a, n) (a & (n-1))
@@ -124,12 +134,13 @@ void hs_put(hs_table_t *table, void *key, void *data)
 	hs_segment_t *seg = &(table->segment_array[get_segment_idx(table, hkey)]);
 	key_t bucket_idx = hkey % table->n_buckets_in_segment;
 	uint hop_range = table->hop_range;
+	hs_bucket_t *last_bucket = seg->last_bucket;
 
 	hs_bucket_t *start_bucket = seg->bucket_array[bucket_idx];
 	LOCK_ACQUIRE(seg->lock);
 
 	// bail out if entry already exists
-    hs_bucket_t *existing_bucket = check_neighborhood(table, start_bucket, hkey);
+    hs_bucket_t *existing_bucket = check_neighborhood(table, seg, start_bucket, hkey);
 	if (existing_bucket != NULL) {
 		LOCK_RELEASE(seg->lock);
 		return;
@@ -144,6 +155,9 @@ void hs_put(hs_table_t *table, void *key, void *data)
 			break;
 		}
 		free_bucket++;
+		if (free_bucket > last_bucket) {
+			free_bucket -= n_buckets_in_segment;
+		}
 	}
 
 	if (dist_travelled < ADD_RANGE) /* empty bucket found */ {
@@ -155,7 +169,7 @@ void hs_put(hs_table_t *table, void *key, void *data)
 				LOCK_RELEASE(seg->lock);
 				return;
 			}
-			find_closer_free_bucket(table, &free_bucket, &dist_travelled);
+			find_closer_free_bucket(table, seg, &free_bucket, &dist_travelled);
 			// if no bucket found within hop_range, free_bucket is set to NULL and
 			// table will be resized.
 		} while (free_bucket != NULL);
@@ -184,7 +198,7 @@ void *hs_get(hs_table_t *table, void *key);
 	// happen if a hkey is being displaced in same segment).
 	do {
 		timestamp = seg->timestamp;
-		check_bucket = check_neighborhood(table, start_bucket, hkey);
+		check_bucket = check_neighborhood(table, seg, start_bucket, hkey);
 		if (check_bucket != NULL) {
 			return check_bucket->data;
 		}
@@ -192,6 +206,7 @@ void *hs_get(hs_table_t *table, void *key);
 	} while (try_counter < max_tries && timestamp != seg->timestamp);
 
 	// Consider adding "slow path": Search all [base, base+hop_range] for hkey.
+	// Note: slow path would have to consider wrapping of segment.
 
 	returne NULL;
 }
@@ -207,7 +222,7 @@ void *hs_remove(hs_table_t *table,void *key);
 	void *data;
 
 	LOCK_ACQUIRE(seg->lock);	
-	check_bucket = check_neighborhood(table, start_bucket, hkey);
+	check_bucket = check_neighborhood(table, seg, start_bucket, hkey);
 	if (check_bucket != NULL) {
 		data = check_bucket->data;
 		check_bucket->hkey = NULL;
@@ -238,16 +253,22 @@ void hs_dispose_table(hs_table_t *table);
 // PRIVATE FUNCTION DEFENITIONS
 // --------------------------------------------
 
-static void find_closer_free_bucket (hs_table_t *table, hs_bucket_t **free_bucket, uint *dist_travelled)
+static void find_closer_free_bucket (hs_table_t *table, hs_segment_t *seg, hs_bucket_t **free_bucket, uint *dist_travelled)
 {
+	uint n_buckets_in_segment = table->n_buckets_in_segment;
+	hs_bucket_t *first_bucket = seg->bucket_array;
+
 	// examine all hop_range-1 preceeding buckets
 	hs_bucket_t *hs_bucket_t check_bucket = *free_bucket - (table->hop_range-1);
+	if (check_bucket < first_bucket) {
+		check_bucket += n_buckets_in_segment;
+	}
 	uint bucket_idx = (table->hop_range - 1);
 	while (bucket_idx > 0) {
-		int move_distance = -1;
-		bitmap_t hop_info = check_bucket->hop_info;
 		// look for a occupied bucket in bitmap of check_bucket, whose key can be moved to free_bucket
 		// don't move the first bucket.
+		int move_distance = -1;
+		bitmap_t hop_info = check_bucket->hop_info;
 		uint i;
 		key_t mask = (1 << 1);
 		for (i = 1; i < bucket_idx; i++, mask <<= 1) {
@@ -258,7 +279,11 @@ static void find_closer_free_bucket (hs_table_t *table, hs_bucket_t **free_bucke
 
 		if (move_distance != -1) /* closer bucket found */ {
 			hs_bucket_t *new_free_bucket = check_bucket + move_distance;
+			if (new_free_bucket > last_bucket) {
+				check_bucket -= n_buckets_in_segment;
+			}
 
+			// swap
 			check_bucket->hop_info |= (1 << bucket_idx);
 			check_bucket->hop_info &= ~(1 << move_distance);
 			*free_bucket->data = new_free_bucket->data;
@@ -275,8 +300,10 @@ static void find_closer_free_bucket (hs_table_t *table, hs_bucket_t **free_bucke
 
 			return;
 		}
-
 		check_bucket++;
+		if (check_bucket > last_bucket) {
+			check_bucket -= n_buckets_in_segment;
+		}
 		bucket_idx--;
 	}
 	*dist_travelled = 0;
@@ -302,14 +329,17 @@ static key_t get_segment_idx(hs_table_t *table, key_t hkey) {
 	return hkey & mask;
 }
 
-// Assuming little-endianess on architecture, closest bucket (on right) is lsb.
-static inline hs_bucket_t *check_neighborhood(hs_table_t *table, hs_bucket_t *start_bucket, key_t hkey)
+static inline hs_bucket_t *check_neighborhood(hs_table_t *table, hs_segment_t *seg, hs_bucket_t *start_bucket, key_t hkey)
 {
 	bitmap_t hop_info = start_bucket->hop_info;
 	hs_bucket_t *this_bucket = start_bucket;
+	hs_bucket_t *last_bucket = seg->last_bucket;
 
 	while (hop_info > 0) {
-		if (hop_info & 1) { 
+		if (hop_info & 1) {
+			if (this_bucket > last_bucket) {
+				this->bucket -= table->n_buckets_in_segment;
+			}
 			if (hkey == this_bucket->hkey) {
 				return this_bucket;
 			}

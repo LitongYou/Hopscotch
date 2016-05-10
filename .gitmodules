@@ -1,0 +1,3 @@
+[submodule "tests/cutest"]
+	path = tests/cutest
+	url = git@github.com:tooein/cutest.git

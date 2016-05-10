@@ -12,7 +12,7 @@
 #include <stdlib.h>
 
 inline uint32_t calculate_hash(char *str) {
-	hash = HASH_INITIAL;
+	uint32_t hash = HASH_INITIAL;
 	int i = 0;
 	while (str[i] != 0) {
 		hash = HASH_NEXT_CHAR(hash, str[i]);
@@ -22,7 +22,3 @@ inline uint32_t calculate_hash(char *str) {
 }
 
 #endif
-
-// For other functions see:
-// http://stackoverflow.com/questions/7666509/hash-function-for-string
-// Probably better use CityHash

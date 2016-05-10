@@ -34,14 +34,15 @@
 
 #include <stdint.h> // used for uint32_t in this header.
 
-typedef unsigned int uint;
-typedef hs_table_t;
-typedef key_t uint32_t;
-typedef bitmap_t uint32_t;
+// gcc built-in
+#define LOG2(X) ((unsigned) (8*sizeof (unsigned long long) - __builtin_clzll((X)) - 1))
 
-//#define GET_BMAP_MSB(x) __builtin_clz(x)
+typedef uint32_t bitmap_t;
 
-typedef key_t (*hash_function_t)(void *val);
+typedef uint32_t hash_t;
+hash_t (*hash_function)(char *);
+
+typedef struct hs_table_s hs_table_t;
 
 // - n_segments dictates the concurrency level, reads are concurrent and linearizable
 //   however any update to the table (i.e, add or remove) locks on segment granularity.
@@ -54,15 +55,14 @@ typedef key_t (*hash_function_t)(void *val);
 //   within, if range is 64, bitmap_t must be able to hold 64 bits, for range of 32,
 //   uint32_t is sufficient. hop_range should consider the size of cache line.
 // - User must provide a  hash function  that hashes key type into something of type
-//   key_t, this type can be changed above.
+//   hash_t, this type can be changed above.
 // - max_tries specifies how many times hs_get  will try to search through its range
 //   for a consistent state.
-hs_table_t *hs_new(uint n_segments,
-				   uint n_buckets_in_segment,
-				   uint hop_range, 
-				   uint add_range,
-				   uint max_tries,
-				   hash_function_t hash);
+hs_table_t *hs_new(unsigned int n_segments,
+				   unsigned int n_buckets_in_segment,
+				   unsigned int hop_range, 
+				   unsigned int add_range,
+				   unsigned int max_tries);
 
 void hs_put(hs_table_t *table, void *key, void *data);
 
@@ -70,9 +70,11 @@ void *hs_get(hs_table_t *table, void *key);
 
 // - returns data so it can be free'd on the same level as it was allocated, returns
 //   NULL if key wasn't found.
-void *hs_remove(hs_table_t *table,void *key);
+void *hs_remove(hs_table_t *table, void *key);
 
-void hs_dispose_table(hs_table_t *table);
+void hs_destroy(hs_table_t *table);
+
+unsigned int hs_sum_bucket_count(hs_table_t *table);
 
 #endif
 

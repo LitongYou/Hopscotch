@@ -9,16 +9,4 @@
 
 #define HASH_FINAL(_hash) (hash & 0x7FFFFFFF)
 
-#include <stdlib.h>
-
-inline uint32_t calculate_hash(char *str) {
-	uint32_t hash = HASH_INITIAL;
-	int i = 0;
-	while (str[i] != 0) {
-		hash = HASH_NEXT_CHAR(hash, str[i]);
-		i++;
-	}
-	return HASH_FINAL(hash);
-}
-
 #endif

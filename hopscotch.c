@@ -81,8 +81,14 @@ struct hs_table_s {
 
 static hash_t get_segment_idx(hs_table_t *table, hash_t hkey);
 static void resize(hs_table_t *table);
-static void find_closer_free_bucket (hs_table_t *table, hs_segment_t *seg, hs_bucket_t **free_bucket, uint *dist_travelled);
-static inline hs_bucket_t *check_neighborhood(hs_table_t *table, hs_segment_t *seg, hs_bucket_t *start_bucket, hash_t hkey);
+static void find_closer_free_bucket (hs_table_t *table, 
+									 hs_segment_t *seg, 
+									 hs_bucket_t **free_bucket, 
+									 uint *dist_travelled);
+static inline hs_bucket_t *check_neighborhood(hs_table_t *table, 
+											  hs_segment_t *seg, 
+											  hs_bucket_t *start_bucket, 
+											  hash_t hkey);
 
 
 // --------------------------------------------
@@ -96,34 +102,31 @@ hs_table_t *hs_new(uint n_segments,
 				   uint max_tries)
 {
 	hs_table_t *new_table = ALLOCATE(sizeof(hs_table_t));
-	new_table->segment_array = ALLOCATE(n_segments*sizeof(hs_segment_t));
-
-	uint i;
-	for (i = 0; i < n_segments; i++) {
-		hs_segment_t seg = new_table->segment_array[i];
-		LOCK_INIT(seg.lock);
-		seg.count = 0;
-		seg.timestamp = 0;
-		seg.bucket_array = ALLOCATE(n_buckets_in_segment*sizeof(hs_bucket_t));
-		seg.last_bucket = &(seg.bucket_array[n_buckets_in_segment-1]);
-		printf("bucket array pos %lu, last_bucket %lu, diff %lu, nbuckets_possible_in_diff %lu\n", 
-			   (uint64_t)seg.bucket_array, 
-			   (uint64_t)seg.last_bucket, 
-			   (uint64_t)seg.last_bucket - (uint64_t)seg.bucket_array, 
-			   ((uint64_t)seg.last_bucket - (uint64_t)seg.bucket_array)/sizeof(hs_bucket_t));
-		seg.bucket_count = 0;
-		uint j;
-		for (j = 0; j < n_buckets_in_segment; j++) {
-			seg.bucket_array[j].hkey = 0;
-			seg.bucket_array[j].hop_info = 0;
-		}
-	}
 
 	new_table->n_segments = n_segments;
 	new_table->n_buckets_in_segment = n_buckets_in_segment;
 	new_table->hop_range = hop_range;
 	new_table->add_range = add_range;
 	new_table->max_tries = max_tries;
+
+	new_table->segment_array = ALLOCATE(n_segments*sizeof(hs_segment_t));
+
+	uint i;
+	for (i = 0; i < n_segments; i++) {
+		hs_segment_t *seg = &(new_table->segment_array[i]);
+		seg->lock = malloc(sizeof(pthread_mutex_t));
+		LOCK_INIT(seg->lock);
+		seg->count = 0;
+		seg->timestamp = 0;
+		seg->bucket_array = ALLOCATE(n_buckets_in_segment*sizeof(hs_bucket_t));
+		seg->last_bucket = &(seg->bucket_array[n_buckets_in_segment-1]);
+		seg->bucket_count = 0;
+		uint j;
+		for (j = 0; j < n_buckets_in_segment; j++) {
+			seg->bucket_array[j].hkey = 0;
+			seg->bucket_array[j].hop_info = 0;
+		}
+	}
 
 	return new_table;
 }
@@ -337,8 +340,8 @@ static void resize(hs_table_t *table)
 
 static hash_t get_segment_idx(hs_table_t *table, hash_t hkey) 
 {
-	uint nbits = (sizeof(hash_t)*8 - LOG2(table->n_segments));
-	hash_t mask = 0;
+	uint nbits = LOG2(table->n_segments);
+	hash_t mask = 1;
 	uint i;
 	for (i = 0; i < nbits; ++i) {
 		mask |= 1 << i;

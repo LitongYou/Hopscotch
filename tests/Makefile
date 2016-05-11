@@ -1,7 +1,7 @@
 CC = gcc
 CFLAGS = -Wall -O3 -g
 LIB =
-DEPS = ../hopscotch.c ../hash.h
+DEPS = ../hopscotch.c ../lookup3.c
 EXE = test
 
 $(EXE): test.c

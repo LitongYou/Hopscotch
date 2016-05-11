@@ -34,7 +34,7 @@
 // Assuming little-endianess on architecture, closest bucket (on right side) in bitmap is lsb.
 // Locking at segment granularity for any update function.
 // Timestamps updated by find_closer_neighbor() and used by hs_get()
-// Wrapped segments
+// Segments wrap at end of array
 // Assumes power of two <n_segments> and <n_buckets_in_segment>.
 // See README & [Herlihy et al., 2008] for more details.
 // hashed key, using 0 as "magic number", this could cause an error
@@ -42,8 +42,6 @@
 #include "hopscotch.h"
 #include "sync.h"
 #include "alloc.h"
-
-#include <stdio.h> // TODO: Remove
 
 typedef unsigned int uint;
 
@@ -89,7 +87,6 @@ static inline hs_bucket_t *check_neighborhood(hs_table_t *table,
 											  hs_segment_t *seg, 
 											  hs_bucket_t *start_bucket, 
 											  hash_t hkey);
-
 
 // --------------------------------------------
 // PUBLIC FUNCTION DEFENITIONS
@@ -145,8 +142,8 @@ void hs_put(hs_table_t *table, void *key, void *data)
 	LOCK_ACQUIRE(seg->lock);
 
 	// bail out if entry already exists
-    hs_bucket_t *existing_bucket = check_neighborhood(table, seg, start_bucket, hkey);
-	if (existing_bucket != NULL) {
+    hs_bucket_t *bucket_exist = check_neighborhood(table, seg, start_bucket, hkey);
+	if (bucket_exist != NULL) {
 		LOCK_RELEASE(seg->lock);
 		return;
 	}
@@ -167,6 +164,7 @@ void hs_put(hs_table_t *table, void *key, void *data)
 
 	if (dist_travelled < add_range) /* empty bucket found */ {
 		do {
+			// here we can get info before everything crashes
 			if (dist_travelled < hop_range) {
 				start_bucket->hop_info |= (1 << dist_travelled);
 				free_bucket->hkey = hkey;
@@ -289,19 +287,20 @@ static void find_closer_free_bucket (hs_table_t *table,
 		// look for a occupied bucket in bitmap of check_bucket, whose key can be moved to free_bucket
 		// don't move the first bucket.
 		int move_distance = -1;
-		bitmap_t hop_info = check_bucket->hop_info;
+		hash_t mask = 1;
+		bitmap_t hop_info = check_bucket->hop_info >> 1;
 		uint i;
-		hash_t mask = (1 << 1);
-		for (i = 1; i < bucket_idx; i++, mask <<= 1) {
+		for (i = 1; i < bucket_idx; i++) {
 			if (mask & hop_info) {
 				move_distance = i;
 			}
+			hop_info >>= 1;
 		}
 
 		if (move_distance != -1) /* closer bucket found */ {
 			hs_bucket_t *new_free_bucket = check_bucket + move_distance;
 			if (new_free_bucket > last_bucket) {
-				check_bucket -= n_buckets_in_segment;
+				new_free_bucket -= n_buckets_in_segment;
 			}
 
 			// swap
@@ -343,14 +342,14 @@ static hash_t get_segment_idx(hs_table_t *table, hash_t hkey)
 	uint nbits = LOG2(table->n_segments);
 	hash_t mask = 1;
 	uint i;
-	for (i = 0; i < nbits; ++i) {
+	for (i = 0; i < nbits; i++) {
 		mask |= 1 << i;
 	}
-	return mask;
 
 	return hkey & mask;
 }
 
+// find occupied bucket whose bit is set to one, and return if it equals the key we're looking for.
 static inline hs_bucket_t *check_neighborhood(hs_table_t *table, 
 											  hs_segment_t *seg, 
 											  hs_bucket_t *start_bucket, 
@@ -369,7 +368,7 @@ static inline hs_bucket_t *check_neighborhood(hs_table_t *table,
 				return this_bucket;
 			}
 		}
-		hop_info = hop_info >> 1;
+		hop_info >>= 1;
 		this_bucket++;
 	}
 

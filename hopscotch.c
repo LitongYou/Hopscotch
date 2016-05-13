@@ -180,8 +180,8 @@ void hs_put(hs_table_t *table, void *key, void *data)
 	}
 
 	LOCK_RELEASE(seg->lock);
-	resize(table);
-	hs_put(table, key, data);
+//	resize(table);
+//	hs_put(table, key, data);
 	return;
 }
 
@@ -217,7 +217,7 @@ void *hs_get(hs_table_t *table, void *key)
 
 void *hs_remove(hs_table_t *table,void *key)
 {
-	hash_t hkey = hash_function(key,KEYLEN);
+	hash_t hkey = hash_function(key, KEYLEN);
 	hs_segment_t *seg = &(table->segment_array[get_segment_idx(table, hkey)]);
 	hash_t bucket_idx = hkey % table->n_buckets_in_segment;
 
@@ -232,7 +232,8 @@ void *hs_remove(hs_table_t *table,void *key)
 		check_bucket->hkey = 0;
 		check_bucket->data = NULL;
 		start_bucket->hop_info &= ~(1 << (check_bucket - start_bucket));
-		seg->bucket_count++;
+		seg->bucket_count--;
+		LOCK_RELEASE(seg->lock);
 		return data;
 	}
 	LOCK_RELEASE(seg->lock);
@@ -371,7 +372,6 @@ static inline hs_bucket_t *check_neighborhood(hs_table_t *table,
 		hop_info >>= 1;
 		this_bucket++;
 	}
-
 	return NULL;
 }
 

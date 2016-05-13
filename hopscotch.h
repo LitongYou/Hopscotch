@@ -32,7 +32,8 @@
 #ifndef __HOPSCOTCH_H_
 #define __HOPSCOTCH_H_
 
-#include <stdint.h> // used for uint32_t in this header.
+#include <stdint.h> // uint32_t in this header.
+#include <stddef.h> // size_t in this header.
 
 // gcc built-in
 #define LOG2(X) ((unsigned) (8*sizeof (unsigned long long) - __builtin_clzll((X)) - 1))
@@ -42,7 +43,7 @@ typedef uint32_t bitmap_t;
 // user provide hash function and fixed sized keys of KEYLEN bytes
 #define KEYLEN 16
 typedef uint32_t hash_t;
-hash_t (*hash_function)(char *str, size_t len);
+hash_t (*hash_function)(const char *str, size_t len);
 
 typedef struct hs_table_s hs_table_t;
 

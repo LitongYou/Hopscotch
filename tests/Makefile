@@ -1,7 +1,7 @@
 CC = gcc
-CFLAGS = -Wall -O3 -g
+CFLAGS = -Wall -g -lpthread -fsanitize=address
 LIB =
-DEPS = ../hopscotch.c ../lookup3.c
+DEPS = ../hopscotch.c ../farmhash-c/farmhash.c
 EXE = test
 
 $(EXE): test.c

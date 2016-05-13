@@ -37,7 +37,7 @@
 // Segments wrap at end of array
 // Assumes power of two <n_segments> and <n_buckets_in_segment>.
 // See README & [Herlihy et al., 2008] for more details.
-// hashed key, using 0 as "magic number", this could cause an error
+// hashed key, using 0 as sentinel value, this could cause an error
 
 #include "hopscotch.h"
 #include "sync.h"
@@ -130,7 +130,7 @@ hs_table_t *hs_new(uint n_segments,
 
 void hs_put(hs_table_t *table, void *key, void *data)
 {
-	hash_t hkey = hash_function(key);
+	hash_t hkey = hash_function(key, KEYLEN);
 	hs_segment_t *seg = &(table->segment_array[get_segment_idx(table, hkey)]);
 	uint n_buckets_in_segment = table->n_buckets_in_segment;
 	hash_t bucket_idx = hkey % n_buckets_in_segment;
@@ -187,7 +187,7 @@ void hs_put(hs_table_t *table, void *key, void *data)
 
 void *hs_get(hs_table_t *table, void *key)
 {
-	hash_t hkey = hash_function(key);
+	hash_t hkey = hash_function(key, KEYLEN);
 	hs_segment_t *seg = &(table->segment_array[get_segment_idx(table, hkey)]);
 	hash_t bucket_idx = hkey % table->n_buckets_in_segment;
 	uint max_tries = table->max_tries;
@@ -217,7 +217,7 @@ void *hs_get(hs_table_t *table, void *key)
 
 void *hs_remove(hs_table_t *table,void *key)
 {
-	hash_t hkey = hash_function(key);
+	hash_t hkey = hash_function(key,KEYLEN);
 	hs_segment_t *seg = &(table->segment_array[get_segment_idx(table, hkey)]);
 	hash_t bucket_idx = hkey % table->n_buckets_in_segment;
 

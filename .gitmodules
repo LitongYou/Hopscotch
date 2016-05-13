@@ -1,3 +1,6 @@
 [submodule "tests/cutest"]
 	path = tests/cutest
 	url = git@github.com:tooein/cutest.git
+[submodule "farmhash-c"]
+	path = farmhash-c
+	url = https://github.com/uxcn/farmhash-c.git

@@ -24,7 +24,7 @@ Get operations uses timestamps (which are updated when displacement happens) and
 
 ### Assumptions:  
 - Little endian architecture
-- Power of two <nbuckets> and <nsegments>
+- Power of two nbuckets and nsegments
 
 ### Analysis:
 
@@ -35,8 +35,6 @@ Get operations uses timestamps (which are updated when displacement happens) and
 ### Todo:  
 - Benchmark
 - Implement resize()
-- Add testing
-- Error handling
 
 ### Contact:
 mail: cs@tooein.net

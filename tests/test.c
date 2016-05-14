@@ -6,10 +6,6 @@
 #include "../hopscotch.h"
 #include "../farmhash-c/farmhash.h"
 
-// TODO: 
-// - Multiple iterations
-// - At what load factor does it fail?
-
 #define VALLEN 10
 #define ARRAY_SIZE 419430
 #define N_THREADS 4
@@ -181,7 +177,6 @@ void *get_array(void *threadid) {
 	pthread_exit(NULL);
 }
 
-// What if we're trying to remove an item that's not there?
 void *remove_array(void *threadid) {
 	long tid = (long)threadid;
 

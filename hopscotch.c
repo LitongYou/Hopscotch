@@ -166,10 +166,10 @@ void hs_put(hs_table_t *table, void *key, void *data)
 		do {
 			// here we can get info before everything crashes
 			if (dist_travelled < hop_range) {
-				start_bucket->hop_info |= (1 << dist_travelled);
-				free_bucket->hkey = hkey;
 				free_bucket->data = data;
 				seg->bucket_count++;
+				start_bucket->hop_info |= (1 << dist_travelled);
+				free_bucket->hkey = hkey;
 				LOCK_RELEASE(seg->lock);
 				return;
 			}
@@ -229,10 +229,10 @@ void *hs_remove(hs_table_t *table,void *key)
 	check_bucket = check_neighborhood(table, seg, start_bucket, hkey);
 	if (check_bucket != NULL) {
 		data = check_bucket->data;
-		check_bucket->hkey = 0;
 		check_bucket->data = NULL;
-		start_bucket->hop_info &= ~(1 << (check_bucket - start_bucket));
 		seg->bucket_count--;
+		start_bucket->hop_info &= ~(1 << (check_bucket - start_bucket));
+		check_bucket->hkey = 0;
 		LOCK_RELEASE(seg->lock);
 		return data;
 	}
@@ -246,8 +246,8 @@ void hs_destroy(hs_table_t *table)
 	uint i;
 	for (i = 0; i < table->n_segments; i++) {
 		LOCK_DISPOSE(table->segment_array[i].lock);
-		DEALLOCATE(table->segment_array[i].bucket_array);
 	}
+	DEALLOCATE(table->segment_array[0].bucket_array);
 	DEALLOCATE(table->segment_array);
 	DEALLOCATE(table);
 

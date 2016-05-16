@@ -111,7 +111,7 @@ hs_table_t *hs_new(uint n_segments,
 	uint i;
 	for (i = 0; i < n_segments; i++) {
 		hs_segment_t *seg = &(new_table->segment_array[i]);
-		seg->lock = malloc(sizeof(pthread_mutex_t));
+		seg->lock = malloc(sizeof(lock_t));
 		LOCK_INIT(seg->lock);
 		seg->count = 0;
 		seg->timestamp = 0;
@@ -294,6 +294,7 @@ static void find_closer_free_bucket (hs_table_t *table,
 		for (i = 1; i < bucket_idx; i++) {
 			if (mask & hop_info) {
 				move_distance = i;
+				break;
 			}
 			hop_info >>= 1;
 		}

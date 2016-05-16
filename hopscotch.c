@@ -107,15 +107,16 @@ hs_table_t *hs_new(uint n_segments,
 	new_table->max_tries = max_tries;
 
 	new_table->segment_array = ALLOCATE(n_segments*sizeof(hs_segment_t));
+	hs_bucket_t *bucket_array = ALLOCATE(n_buckets_in_segment*n_segments*sizeof(hs_bucket_t));
 
 	uint i;
 	for (i = 0; i < n_segments; i++) {
 		hs_segment_t *seg = &(new_table->segment_array[i]);
-		seg->lock = malloc(sizeof(lock_t));
+		seg->lock = ALLOCATE(sizeof(lock_t));
 		LOCK_INIT(seg->lock);
 		seg->count = 0;
 		seg->timestamp = 0;
-		seg->bucket_array = ALLOCATE(n_buckets_in_segment*sizeof(hs_bucket_t));
+		seg->bucket_array = &(bucket_array[i*n_buckets_in_segment]);
 		seg->last_bucket = &(seg->bucket_array[n_buckets_in_segment-1]);
 		seg->bucket_count = 0;
 		uint j;
@@ -134,8 +135,8 @@ void hs_put(hs_table_t *table, void *key, void *data)
 	hs_segment_t *seg = &(table->segment_array[get_segment_idx(table, hkey)]);
 	uint n_buckets_in_segment = table->n_buckets_in_segment;
 	hash_t bucket_idx = hkey % n_buckets_in_segment;
-	uint hop_range = table->hop_range;
 	hs_bucket_t *last_bucket = seg->last_bucket;
+	uint hop_range = table->hop_range;
 	uint add_range = table->add_range;
 
 	hs_bucket_t *start_bucket = &(seg->bucket_array[bucket_idx]);
@@ -246,6 +247,7 @@ void hs_destroy(hs_table_t *table)
 	uint i;
 	for (i = 0; i < table->n_segments; i++) {
 		LOCK_DISPOSE(table->segment_array[i].lock);
+		DEALLOCATE(table->segment_array[i].lock);
 	}
 	DEALLOCATE(table->segment_array[0].bucket_array);
 	DEALLOCATE(table->segment_array);
@@ -304,7 +306,6 @@ static void find_closer_free_bucket (hs_table_t *table,
 			if (new_free_bucket > last_bucket) {
 				new_free_bucket -= n_buckets_in_segment;
 			}
-
 			// swap
 			check_bucket->hop_info |= (1 << bucket_idx);
 			check_bucket->hop_info &= ~(1 << move_distance);
@@ -318,7 +319,7 @@ static void find_closer_free_bucket (hs_table_t *table,
 			new_free_bucket->data = NULL;
 
 			*free_bucket = new_free_bucket;
-			*dist_travelled = bucket_idx;
+			*dist_travelled -= (bucket_idx-move_distance);
 
 			return;
 		}

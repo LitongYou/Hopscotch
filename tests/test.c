@@ -6,14 +6,14 @@
 #include "../hopscotch.h"
 #include "../farmhash-c/farmhash.h"
 
-#define VALLEN 10
-#define ARRAY_SIZE 419430
+#define VAL_LEN 10
+#define ARRAY_SIZE 419428
 #define N_THREADS 4
 
 #define N_SEGMENTS 4
 #define N_BUCKETS_IN_SEGMENT 131072
 #define HOP_RANGE 32
-#define ADD_RANGE 216
+#define ADD_RANGE 512
 #define MAX_TRIES 1
 
 typedef unsigned int uint;
@@ -56,7 +56,7 @@ int main(int argc, char **argv)
 		if (a[i].key == NULL) {
 			printf("Allocation failed\n");
 		}
-		a[i].val = malloc(sizeof(char)*(VALLEN+1));
+		a[i].val = malloc(sizeof(char)*(VAL_LEN+1));
 		if (a[i].val == NULL) {
 			printf("Allocation failed\n");
 		}
@@ -141,7 +141,11 @@ int main(int argc, char **argv)
 		assert(hs_sum_bucket_count(table) == 0);
 	}
 
-	pthread_exit(NULL);
+	for (i = 0; i < ARRAY_SIZE; i++) {
+		free(a[i].key);
+		free(a[i].val);
+	}
+
 	hs_destroy(table);
 
 	return 0;
@@ -162,13 +166,16 @@ void rand_str(char *dest, size_t length) {
 void *get_array(void *threadid) {
 	long tid = (long)threadid;
 
+	char *retval;
 	uint hits = 0;
 	uint misses = 0;
 	uint i;
 	for (i = 0; i < ARRAY_SIZE/N_THREADS; i++) {
-		if (hs_get(table, a[tid*(ARRAY_SIZE/N_THREADS)+i].key) == a[tid*(ARRAY_SIZE/N_THREADS)+i].val) {
+		retval = hs_get(table, a[tid*(ARRAY_SIZE/N_THREADS)+i].key);
+		if (retval == a[tid*(ARRAY_SIZE/N_THREADS)+i].val) {
 			hits++;
 		} else {
+			printf("got %s, expected %s\n", retval, a[tid*(ARRAY_SIZE/N_THREADS)+i].val);
 			misses++;
 		}
 	}
@@ -184,7 +191,6 @@ void *remove_array(void *threadid) {
 	uint i;
 	for (i = 0; i < ARRAY_SIZE/N_THREADS; i++) {
 		data = hs_remove(table, a[tid*(ARRAY_SIZE/N_THREADS)+i].key);
-		free(data);
 	}
 
 	pthread_exit(NULL);	
@@ -196,7 +202,7 @@ void *fill_array(void *threadid) {
 	uint i;
 	for (i = 0; i < ARRAY_SIZE/N_THREADS; i++) {
 		rand_str(a[tid*(ARRAY_SIZE/N_THREADS)+i].key, KEYLEN);
-		rand_str(a[tid*(ARRAY_SIZE/N_THREADS)+i].val, VALLEN);
+		rand_str(a[tid*(ARRAY_SIZE/N_THREADS)+i].val, VAL_LEN);
 		hs_put(table, a[tid*(ARRAY_SIZE/N_THREADS)+i].key, a[tid*(ARRAY_SIZE/N_THREADS)+i].val);
 	}
 

@@ -175,7 +175,6 @@ void *get_array(void *threadid) {
 		if (retval == a[tid*(ARRAY_SIZE/N_THREADS)+i].val) {
 			hits++;
 		} else {
-			printf("got %s, expected %s\n", retval, a[tid*(ARRAY_SIZE/N_THREADS)+i].val);
 			misses++;
 		}
 	}

@@ -165,7 +165,6 @@ void hs_put(hs_table_t *table, void *key, void *data)
 
 	if (dist_travelled < add_range) /* empty bucket found */ {
 		do {
-			// here we can get info before everything crashes
 			if (dist_travelled < hop_range) {
 				free_bucket->data = data;
 				seg->bucket_count++;
@@ -179,8 +178,8 @@ void hs_put(hs_table_t *table, void *key, void *data)
 			// table will be resized.
 		} while (free_bucket != NULL);
 	}
-
 	LOCK_RELEASE(seg->lock);
+
 //	resize(table);
 //	hs_put(table, key, data);
 	return;
@@ -216,7 +215,7 @@ void *hs_get(hs_table_t *table, void *key)
 	return NULL;
 }
 
-void *hs_remove(hs_table_t *table,void *key)
+void *hs_remove(hs_table_t *table, void *key)
 {
 	hash_t hkey = hash_function(key, KEYLEN);
 	hs_segment_t *seg = &(table->segment_array[get_segment_idx(table, hkey)]);

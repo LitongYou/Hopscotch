@@ -32,6 +32,9 @@
 #ifndef __HOPSCOTCH_H_
 #define __HOPSCOTCH_H_
 
+#define SPINLOCK
+//#define MUTEX
+
 #include <stdint.h> // uint32_t in this header.
 #include <stddef.h> // size_t in this header.
 

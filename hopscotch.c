@@ -246,7 +246,7 @@ void hs_destroy(hs_table_t *table)
 	uint i;
 	for (i = 0; i < table->n_segments; i++) {
 		LOCK_DISPOSE(table->segment_array[i].lock);
-		DEALLOCATE(table->segment_array[i].lock);
+		DEALLOCATE((void*)table->segment_array[i].lock);
 	}
 	DEALLOCATE(table->segment_array[0].bucket_array);
 	DEALLOCATE(table->segment_array);

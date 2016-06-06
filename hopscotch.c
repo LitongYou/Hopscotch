@@ -55,7 +55,6 @@ typedef struct {
 	hs_bucket_t *bucket_array;
 	hs_bucket_t *last_bucket;
 	lock_t *lock;
-	uint count;
 	volatile uint timestamp;
 	uint bucket_count;
 } hs_segment_t;
@@ -114,7 +113,6 @@ hs_table_t *hs_new(uint n_segments,
 		hs_segment_t *seg = &(new_table->segment_array[i]);
 		seg->lock = ALLOCATE(sizeof(lock_t));
 		LOCK_INIT(seg->lock);
-		seg->count = 0;
 		seg->timestamp = 0;
 		seg->bucket_array = &(bucket_array[i*n_buckets_in_segment]);
 		seg->last_bucket = &(seg->bucket_array[n_buckets_in_segment-1]);

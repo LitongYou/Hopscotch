@@ -4,8 +4,7 @@ This is an implementation of Hopscotch Hashing described in Herlihy et al. (2008
 
 
 ### Description
-Hopscotch hashing combines the advantages of Cuckoo Hashing, Chained Hashing, and Linear probing. The main idea is as follows: There is a "base bucket" that is the bucket for all keys that falls on this index based on the hashed key. When key's collide, they are put as close to this bucket as possible (within a set range), and thus the algorithm utilizes the cached hierarchy of modern computers. All buckets contain a bitmap, which indicates which key's belongs to the bucket, this allows for faster retrieval and removal.
-
+Hopscotch hashing combines the advantages of Cuckoo Hashing, Chained Hashing, and Linear probing. The main idea is as follows: All hashed key's has an original bucket index. When key's collide, they are put as close to this bucket as possible (within a user-specified range), and thus the algorithm utilizes spacial locality. All buckets contain a bitmap, which indicates which keys belongs to an index, which allows for faster retrieval and removal of items.  
 
 Here's how to add an item (as described in the original paper):
 
@@ -26,15 +25,15 @@ Get operations uses timestamps (which are updated when displacement happens) and
 - Little endian architecture
 - Power of two nbuckets and nsegments
 
-### Analysis:
-
-
-### Status:
-
 
 ### Todo:  
 - Benchmark
 - Implement resize()
+
+
+### Status:
+- When going outside segment boundaries, the segments are not locked, and thus the behavior is not correct at the moment.
+
 
 ### Contact:
 mail: cs@tooein.net

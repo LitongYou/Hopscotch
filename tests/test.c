@@ -50,13 +50,13 @@ int main(int argc, char **argv)
 	long n_items = N_SEGMENTS*N_BUCKETS_IN_SEGMENT;
 	printf("Initializing test with %lu buckets over %d segments, load factor -> %.2f\n", n_items, N_SEGMENTS, (float)ARRAY_SIZE/(float)n_items);
 
-	hash_function = &farmhash64;
-
 	table = hs_new(N_SEGMENTS, 
 				   N_BUCKETS_IN_SEGMENT, 
 				   HOP_RANGE, 
 				   ADD_RANGE, 
-				   MAX_TRIES);
+				   MAX_TRIES,
+				   &farmhash64,
+				   &strcmp);
 
 	uint i;
 
@@ -90,7 +90,7 @@ int main(int argc, char **argv)
 
 		
 		// TEST COUNT
-		printf("Array initialized, bucket count: %d\n", hs_sum_bucket_count(table));
+		printf("Array initialized, bucket count: %d\n", hs_count(table));
 
 
 		// TEST GET
@@ -110,8 +110,8 @@ int main(int argc, char **argv)
 		spawn_threads(remove_from_array);
 		join_threads();
 
-		printf("Removed all items, bucket count: %d\n", hs_sum_bucket_count(table));
-		assert(hs_sum_bucket_count(table) == 0);
+		printf("Removed all items, bucket count: %d\n", hs_count(table));
+		assert(hs_count(table) == 0);
 	}
 
 	for (i = 0; i < ARRAY_SIZE; i++) {
@@ -178,7 +178,6 @@ void *remove_from_array(void *threadid) {
 	for (i = 0; i < ARRAY_SIZE/N_THREADS; i++) {
 		kv_item_t *item = &a[tid*(ARRAY_SIZE/N_THREADS)+i];
 		data = hs_remove(table, item->key);
-		// TODO: check return value
 	}
 
 	pthread_exit(NULL);	
@@ -187,6 +186,7 @@ void *remove_from_array(void *threadid) {
 
 void *fill_from_array(void *threadid) {
 	long tid = (long)threadid;
+	int ret;
 
 	uint i;
 	for (i = 0; i < ARRAY_SIZE/N_THREADS; i++) {
@@ -194,8 +194,7 @@ void *fill_from_array(void *threadid) {
 
 		rand_str(item->key, KEYLEN);
 		rand_str(item->val, VAL_LEN);
-		hs_put(table, item->key, item->val);
-		// TODO: check return value
+		ret = hs_put(table, item->key, item->val);
 	}
 
 	pthread_exit(NULL);

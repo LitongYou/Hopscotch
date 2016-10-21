@@ -16,6 +16,8 @@
 #define ADD_RANGE 512
 #define MAX_TRIES 1
 
+#define N_ITERATIONS 2
+
 typedef unsigned int uint;
 
 #include <stdlib.h>
@@ -23,25 +25,32 @@ typedef unsigned int uint;
 typedef struct {
 	char *key;
 	char *val;
-} kv_t;
+} kv_item_t;
 
 // Allocate array, threads work on different portions of this array.
-kv_t a[ARRAY_SIZE];
+kv_item_t a[ARRAY_SIZE];
 
 hs_table_t *table;
 
 void rand_str(char *dest, size_t length);
-void *fill_array(void *threadid);
-void *get_array(void *threadid);
-void *remove_array(void *threadid);
+void *fill_from_array(void *threadid);
+void *get_from_array(void *threadid);
+void *remove_from_array(void *threadid);
+void spawn_threads(void *(*start_routine) (void *));
+void join_threads();
+
+pthread_t threads[N_THREADS];
+pthread_attr_t attr;
+void *status;
+int rc;
+int t;
 
 int main(int argc, char **argv)
 {
 	long n_items = N_SEGMENTS*N_BUCKETS_IN_SEGMENT;
-	printf("Initializing test with %lu buckets over %d segments, load factor -> %.2f\n", n_items, 
-		   N_SEGMENTS, (float)ARRAY_SIZE/(float)n_items);
+	printf("Initializing test with %lu buckets over %d segments, load factor -> %.2f\n", n_items, N_SEGMENTS, (float)ARRAY_SIZE/(float)n_items);
 
-	hash_function = &farmhash32;
+	hash_function = &farmhash64;
 
 	table = hs_new(N_SEGMENTS, 
 				   N_BUCKETS_IN_SEGMENT, 
@@ -55,87 +64,51 @@ int main(int argc, char **argv)
 		a[i].key = malloc(sizeof(char)*(KEYLEN+1));
 		if (a[i].key == NULL) {
 			printf("Allocation failed\n");
+			exit(1);
 		}
 		a[i].val = malloc(sizeof(char)*(VAL_LEN+1));
 		if (a[i].val == NULL) {
 			printf("Allocation failed\n");
+			exit(1);
 		}
 	}
 
-	const int n_iterations = 3;
+	pthread_attr_init(&attr);
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+
 	uint it;
 
-	for (it = 1; it < n_iterations; it++) {
-		printf("----------------\n");
+	for (it = 1; it < N_ITERATIONS+1; it++) {
+		printf("\n----------------\n");
 		printf("Iteration %d\n", it);
 		printf("----------------\n\n");
 
-		long t;
-		int rc;
-		pthread_t threads[N_THREADS];
-		pthread_attr_t attr;
-		pthread_attr_init(&attr);
-		pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
-		void *status;
 
-		// Fill array
-		printf("Filling array\n");
-		for (t = 0; t < N_THREADS; t++) {
-			rc = pthread_create(&threads[t], &attr, fill_array, (void *)t);
-			if (rc) {
-				printf("Couldn't spawn threads, error %d\n", rc);
-				exit(-1);
-			}
-		}
+		// TEST PUT
+		spawn_threads(fill_from_array);
+		join_threads();
 
-		// Join threads
-		for (t = 0; t < N_THREADS; t++) {
-			rc = pthread_join(threads[t], &status);
-			if (rc) {
-				printf("pthread_join: %d\n", rc);
-				exit(-1);
-			}
-		}
-
+		
+		// TEST COUNT
 		printf("Array initialized, bucket count: %d\n", hs_sum_bucket_count(table));
 
-		// Test get(key)
-		printf("Getting items\n");
-		for (t = 0; t < N_THREADS; t++) {
-			rc = pthread_create(&threads[t], &attr, get_array, (void *)t);
-			if (rc) {
-				printf("Couldn't spawn threads, error %d\n", rc);
-				exit(-1);
-			}
-		}
 
-		// Join threads
-		for (t = 0; t < N_THREADS; t++) {
-			rc = pthread_join(threads[t], &status);
-			if (rc) {
-				printf("pthread_join: %d\n", rc);
-				exit(-1);
-			}
-		}
+		// TEST GET
+		spawn_threads(get_from_array);
+		join_threads();
 
-		// Remove all items
-		printf("Removing items\n");
-		for (t = 0; t < N_THREADS; t++) {
-			rc = pthread_create(&threads[t], &attr, remove_array, (void *)t);
-			if (rc) {
-				printf("Couldn't spawn threads, error %d\n", rc);
-				exit(-1);
-			}
-		}
 
-		// Join threads
-		for (t = 0; t < N_THREADS; t++) {
-			rc = pthread_join(threads[t], &status);
-			if (rc) {
-				printf("pthread_join: %d\n", rc);
-				exit(-1);
-			}
-		}
+		// TEMP TEST: same key, different memory addr
+		char *dup = strdup(a[1].key);
+		char *rv1 = hs_get(table, a[1].key);
+		char *rv2 = hs_get(table, dup);
+		assert(strcmp(rv1, rv2) == 0);
+		free(dup);
+
+
+		// TEST REMOVE
+		spawn_threads(remove_from_array);
+		join_threads();
 
 		printf("Removed all items, bucket count: %d\n", hs_sum_bucket_count(table));
 		assert(hs_sum_bucket_count(table) == 0);
@@ -151,19 +124,30 @@ int main(int argc, char **argv)
 	return 0;
 }
 
-void rand_str(char *dest, size_t length) {
-    char charset[] = "0123456789"
-                     "abcdefghijklmnopqrstuvwxyz"
-                     "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
-    while (length-- > 0) {
-        size_t index = (double) rand() / RAND_MAX * (sizeof charset - 1);
-        *dest++ = charset[index];
-    }
-    *dest = '\0';
+void spawn_threads(void *(*start_routine) (void *)) {
+	for (t = 0; t < N_THREADS; t++) {
+		rc = pthread_create(&threads[t], &attr, start_routine, (void *)t);
+		if (rc) {
+			printf("Couldn't spawn threads, error %d\n", rc);
+			exit(-1);
+		}
+	}
 }
 
-void *get_array(void *threadid) {
+
+void join_threads() {
+	for (t = 0; t < N_THREADS; t++) {
+		rc = pthread_join(threads[t], &status);
+		if (rc) {
+			printf("pthread_join: %d\n", rc);
+			exit(-1);
+		}
+	}
+}
+
+
+void *get_from_array(void *threadid) {
 	long tid = (long)threadid;
 
 	char *retval;
@@ -171,8 +155,10 @@ void *get_array(void *threadid) {
 	uint misses = 0;
 	uint i;
 	for (i = 0; i < ARRAY_SIZE/N_THREADS; i++) {
-		retval = hs_get(table, a[tid*(ARRAY_SIZE/N_THREADS)+i].key);
-		if (retval == a[tid*(ARRAY_SIZE/N_THREADS)+i].val) {
+		kv_item_t *item = &a[tid*(ARRAY_SIZE/N_THREADS)+i];
+
+		retval = hs_get(table, item->key);
+		if (retval != NULL && strcmp(retval, item->val) == 0) {
 			hits++;
 		} else {
 			misses++;
@@ -183,27 +169,46 @@ void *get_array(void *threadid) {
 	pthread_exit(NULL);
 }
 
-void *remove_array(void *threadid) {
+
+void *remove_from_array(void *threadid) {
 	long tid = (long)threadid;
 
 	void *data;
 	uint i;
 	for (i = 0; i < ARRAY_SIZE/N_THREADS; i++) {
-		data = hs_remove(table, a[tid*(ARRAY_SIZE/N_THREADS)+i].key);
+		kv_item_t *item = &a[tid*(ARRAY_SIZE/N_THREADS)+i];
+		data = hs_remove(table, item->key);
+		// TODO: check return value
 	}
 
 	pthread_exit(NULL);	
 }
 
-void *fill_array(void *threadid) {
+
+void *fill_from_array(void *threadid) {
 	long tid = (long)threadid;
 
 	uint i;
 	for (i = 0; i < ARRAY_SIZE/N_THREADS; i++) {
-		rand_str(a[tid*(ARRAY_SIZE/N_THREADS)+i].key, KEYLEN);
-		rand_str(a[tid*(ARRAY_SIZE/N_THREADS)+i].val, VAL_LEN);
-		hs_put(table, a[tid*(ARRAY_SIZE/N_THREADS)+i].key, a[tid*(ARRAY_SIZE/N_THREADS)+i].val);
+		kv_item_t *item = &a[tid*(ARRAY_SIZE/N_THREADS)+i];
+
+		rand_str(item->key, KEYLEN);
+		rand_str(item->val, VAL_LEN);
+		hs_put(table, item->key, item->val);
+		// TODO: check return value
 	}
 
 	pthread_exit(NULL);
+}
+
+void rand_str(char *dest, size_t length) {
+    char charset[] = "0123456789"
+		"abcdefghijklmnopqrstuvwxyz"
+		"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+    while (length-- > 0) {
+        size_t index = (double) rand() / RAND_MAX * (sizeof charset - 1);
+        *dest++ = charset[index];
+    }
+    *dest = '\0';
 }

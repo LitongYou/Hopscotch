@@ -45,8 +45,7 @@ typedef uint32_t bitmap_t;
 
 // user provide hash function and fixed sized keys of KEYLEN bytes
 #define KEYLEN 16
-typedef uint32_t hash_t;
-hash_t (*hash_function)(const char *str, size_t len);
+uint64_t (*hash_function)(const char *str, size_t len);
 
 typedef struct hs_table_s hs_table_t;
 

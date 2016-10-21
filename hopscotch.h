@@ -32,20 +32,16 @@
 #ifndef __HOPSCOTCH_H_
 #define __HOPSCOTCH_H_
 
+// TODO: Force mutex
 //#define SPINLOCK
 #define MUTEX
 
-#include <stdint.h> // uint32_t in this header.
-#include <stddef.h> // size_t in this header.
+#include <stdint.h>
+#include <stddef.h>
 
-// gcc built-in
-#define LOG2(X) ((unsigned) (8*sizeof (unsigned long long) - __builtin_clzll((X)) - 1))
-
+// set to desired sizes
 typedef uint32_t bitmap_t;
-
-// user provide hash function and fixed sized keys of KEYLEN bytes
 #define KEYLEN 16
-uint64_t (*hash_function)(const char *str, size_t len);
 
 typedef struct hs_table_s hs_table_t;
 
@@ -58,28 +54,26 @@ typedef struct hs_table_s hs_table_t;
 //   initial bucket, table is resized.
 // - hop_range specifies the range of which buckets that isn't base bucket must fall
 //   within, if range is 64, bitmap_t must be able to hold 64 bits, for range of 32,
-//   uint32_t is sufficient. hop_range should consider the size of cache line.
-// - User must provide a  hash function  that hashes key type into something of type
-//   hash_t, this type can be changed above.
+//   uint32_t is sufficient. the size of hop_range may have performance implications.
 // - max_tries specifies how many times hs_get  will try to search through its range
 //   for a consistent state.
 hs_table_t *hs_new(unsigned int n_segments,
 				   unsigned int n_buckets_in_segment,
 				   unsigned int hop_range, 
 				   unsigned int add_range,
-				   unsigned int max_tries);
+				   unsigned int max_tries,
+				   unsigned int (*hash_fn)(void *, size_t),
+				   int (*cmp_fn)(void *k1, void *k2));
 
-void hs_put(hs_table_t *table, void *key, void *data);
+int hs_put(hs_table_t *table, void *key, void *data);
 
 void *hs_get(hs_table_t *table, void *key);
 
-// - returns data so it can be free'd on the same level as it was allocated, returns
-//   NULL if key wasn't found.
 void *hs_remove(hs_table_t *table, void *key);
 
 void hs_destroy(hs_table_t *table);
 
-unsigned int hs_sum_bucket_count(hs_table_t *table);
+unsigned int hs_count(hs_table_t *table);
 
 #endif
 

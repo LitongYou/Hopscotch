@@ -6,6 +6,7 @@
 #include "../hopscotch.h"
 #include "../farmhash-c/farmhash.h"
 
+#define KEY_LEN 10
 #define VAL_LEN 10
 #define ARRAY_SIZE 419428
 #define N_THREADS 4
@@ -20,14 +21,11 @@
 
 typedef unsigned int uint;
 
-#include <stdlib.h>
-
 typedef struct {
 	char *key;
 	char *val;
 } kv_item_t;
 
-// Allocate array, threads work on different portions of this array.
 kv_item_t a[ARRAY_SIZE];
 
 hs_table_t *table;
@@ -52,16 +50,16 @@ int main(int argc, char **argv)
 
 	table = hs_new(N_SEGMENTS, 
 				   N_BUCKETS_IN_SEGMENT, 
-				   HOP_RANGE, 
 				   ADD_RANGE, 
 				   MAX_TRIES,
 				   &farmhash64,
-				   &strcmp);
+				   &strcmp,
+				   KEY_LEN);
 
 	uint i;
 
 	for (i = 0; i < ARRAY_SIZE; i++) {
-		a[i].key = malloc(sizeof(char)*(KEYLEN+1));
+		a[i].key = malloc(sizeof(char)*(KEY_LEN+1));
 		if (a[i].key == NULL) {
 			printf("Allocation failed\n");
 			exit(1);
@@ -75,38 +73,30 @@ int main(int argc, char **argv)
 
 	pthread_attr_init(&attr);
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+	
 
 	uint it;
-
 	for (it = 1; it < N_ITERATIONS+1; it++) {
 		printf("\n----------------\n");
 		printf("Iteration %d\n", it);
 		printf("----------------\n\n");
 
 
-		// TEST PUT
+		// TEST put
 		spawn_threads(fill_from_array);
 		join_threads();
 
 		
-		// TEST COUNT
+		// TEST count
 		printf("Array initialized, bucket count: %d\n", hs_count(table));
 
 
-		// TEST GET
+		// TEST get
 		spawn_threads(get_from_array);
 		join_threads();
 
 
-		// TEMP TEST: same key, different memory addr
-		char *dup = strdup(a[1].key);
-		char *rv1 = hs_get(table, a[1].key);
-		char *rv2 = hs_get(table, dup);
-		assert(strcmp(rv1, rv2) == 0);
-		free(dup);
-
-
-		// TEST REMOVE
+		// TEST remove
 		spawn_threads(remove_from_array);
 		join_threads();
 
@@ -192,7 +182,7 @@ void *fill_from_array(void *threadid) {
 	for (i = 0; i < ARRAY_SIZE/N_THREADS; i++) {
 		kv_item_t *item = &a[tid*(ARRAY_SIZE/N_THREADS)+i];
 
-		rand_str(item->key, KEYLEN);
+		rand_str(item->key, KEY_LEN);
 		rand_str(item->val, VAL_LEN);
 		ret = hs_put(table, item->key, item->val);
 	}

@@ -2,13 +2,15 @@ CC = gcc
 CFLAGS = -Wall -g -lpthread -fsanitize=address
 LIB =
 DEPS = ../hopscotch.c ../farmhash-c/farmhash.c
-EXE = test
 
-$(EXE): test.c
+testapp: testapp.c
+	$(CC) $(CFLAGS) -o $@ $^ $(DEPS) $(LIB)
+
+simple: simple.c
 	$(CC) $(CFLAGS) -o $@ $^ $(DEPS) $(LIB)
 
 .PHONY: clean
 
 clean:
-	rm -rf $(EXE)
+	rm -rf testapp simple
 

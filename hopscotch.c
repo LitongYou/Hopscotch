@@ -36,6 +36,7 @@
 
 #define LOG2(X) ((unsigned) (8*sizeof (unsigned long long) - __builtin_clzll((X)) - 1))
 #define MOD(n,m) (n & (m - 1))
+#define IS_POW_OF_TWO(x) ((x & (x - 1)) == 0)
 
 typedef struct {
 	void *data;
@@ -60,6 +61,7 @@ struct hs_table_s {
 	unsigned int max_tries;
 	unsigned int (*hash_fn)(void *, size_t);
 	int (*cmp_fn)(void *k1, void *k2);
+	unsigned int key_len;
 };
 
 
@@ -84,29 +86,32 @@ static inline hs_bucket_t *find_key(hs_table_t *table,
 
 hs_table_t *hs_new(unsigned int n_segments,
 				   unsigned int n_buckets_in_segment,
-				   unsigned int hop_range, 
 				   unsigned int add_range,
 				   unsigned int max_tries,
 				   unsigned int (*hash_fn)(void *, size_t),
-				   int (*cmp_fn)(void *k1, void *k2))
+				   int (*cmp_fn)(void *k1, void *k2),
+				   size_t key_len)
 {
+	if (!IS_POW_OF_TWO(n_segments)) { return NULL; }
+	if (!IS_POW_OF_TWO(n_buckets_in_segment)) { return NULL; }
+
 	hs_table_t *table = (hs_table_t *)malloc(sizeof(hs_table_t));
 	if (table == NULL) { goto table_alloc_failed; }
 
 	table->n_segments = n_segments;
 	table->n_buckets_in_segment = n_buckets_in_segment;
-	table->hop_range = hop_range;
+	table->hop_range = sizeof(bitmap_t) * 8;
 	table->add_range = add_range;
 	table->max_tries = max_tries;
 	table->hash_fn = hash_fn;
 	table->cmp_fn = cmp_fn;
+	table->key_len = key_len;
 
 	table->segment_array = (hs_segment_t *)malloc(n_segments*sizeof(hs_segment_t));
 	if (table->segment_array == NULL) { goto segment_alloc_failed; }
 
 	hs_bucket_t *bucket_array = (hs_bucket_t *)malloc(n_buckets_in_segment*n_segments*sizeof(hs_bucket_t));
-	if (bucket_array == NULL) { goto buckets_alloc_failed; }
-	
+	if (bucket_array == NULL) { goto buckets_alloc_failed; }	
 
 	unsigned int i;
 	for (i = 0; i < n_segments; i++) {
@@ -146,7 +151,7 @@ hs_table_t *hs_new(unsigned int n_segments,
 
 int hs_put(hs_table_t *table, void *key, void *data)
 {
-	unsigned int hash = table->hash_fn(key, KEYLEN);
+	unsigned int hash = table->hash_fn(key, table->key_len);
 	hs_segment_t *seg = &(table->segment_array[get_segment_idx(table, hash)]);
 	unsigned int bucket_idx = MOD(hash, table->n_buckets_in_segment);
 	hs_bucket_t *last_bucket = seg->last_bucket;
@@ -200,7 +205,7 @@ int hs_put(hs_table_t *table, void *key, void *data)
 
 void *hs_get(hs_table_t *table, void *key)
 {
-	unsigned int hash = table->hash_fn(key, KEYLEN);
+	unsigned int hash = table->hash_fn(key, table->key_len);
 	hs_segment_t *seg = &(table->segment_array[get_segment_idx(table, hash)]);
 	unsigned int bucket_idx = MOD(hash, table->n_buckets_in_segment);
 
@@ -229,7 +234,7 @@ void *hs_get(hs_table_t *table, void *key)
 
 void *hs_remove(hs_table_t *table, void *key)
 {
-	unsigned int hash = table->hash_fn(key, KEYLEN);
+	unsigned int hash = table->hash_fn(key, table->key_len);
 	hs_segment_t *seg = &(table->segment_array[get_segment_idx(table, hash)]);
 	unsigned int bucket_idx = MOD(hash, table->n_buckets_in_segment);
 

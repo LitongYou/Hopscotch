@@ -32,16 +32,16 @@
 #ifndef __HOPSCOTCH_H_
 #define __HOPSCOTCH_H_
 
-// TODO: Force mutex
-//#define SPINLOCK
-#define MUTEX
-
 #include <stdint.h>
 #include <stddef.h>
 
-// set to desired sizes
+#define MUTEX
+
+// Change these to your needs:
+// type of bitmap_t dictates hop_range, i.e. the range from base bucket that buckets
+// must fall within, bigger bitmap yields more options, however the buckets becomes
+// bigger which may have some performance implications.
 typedef uint32_t bitmap_t;
-#define KEYLEN 16
 
 typedef struct hs_table_s hs_table_t;
 
@@ -59,11 +59,11 @@ typedef struct hs_table_s hs_table_t;
 //   for a consistent state.
 hs_table_t *hs_new(unsigned int n_segments,
 				   unsigned int n_buckets_in_segment,
-				   unsigned int hop_range, 
 				   unsigned int add_range,
 				   unsigned int max_tries,
 				   unsigned int (*hash_fn)(void *, size_t),
-				   int (*cmp_fn)(void *k1, void *k2));
+				   int (*cmp_fn)(void *k1, void *k2),
+				   size_t key_len);
 
 int hs_put(hs_table_t *table, void *key, void *data);
 

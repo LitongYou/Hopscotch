@@ -1,6 +1,6 @@
 ## Hopscotch Hashing
 
-This is an implementation of Hopscotch Hashing described in Herlihy et al. (2008).
+This is an implementation of the Hopscotch hash table as described by Herlihy et al. (2008).
 
 
 ### Implementation:  
@@ -39,7 +39,6 @@ This is an implementation of Hopscotch Hashing described in Herlihy et al. (2008
 ### Todo:  
 
   * Implement resize()  
-  * Support update
 
 
 ### Contact:
